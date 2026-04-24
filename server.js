@@ -106,3 +106,29 @@ app.delete("/departments/:id", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
+
+/* ===== IMPORT PRODUCTS ===== */
+app.post("/import", async (req, res) => {
+  try {
+    const items = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "No items to import" });
+    }
+
+    await Product.insertMany(items);
+
+    // auto-create departments from imported products
+    const departments = [...new Set(items.map(i => i.department).filter(Boolean))];
+    await Promise.all(
+      departments.map(name =>
+        Department.updateOne({ name }, { name }, { upsert: true })
+      )
+    );
+
+    res.json({ success: true, count: items.length });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
