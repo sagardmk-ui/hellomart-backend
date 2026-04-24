@@ -1,4 +1,3 @@
-
 const express = require("express");
 const cors = require("cors");
 const db = require("./db");
@@ -6,24 +5,83 @@ const db = require("./db");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-/* ===== MIDDLEWARE ===== */
+/* ================= MIDDLEWARE ================= */
 app.use(
   cors({
     origin: [
       "http://localhost:5173",
-      "https://hellomart.vercel.app"
+      "https://hello-mart-bkrp.vercel.app"
     ],
   })
 );
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-/* ===== HEALTH CHECK ===== */
+/* ================= HEALTH CHECK ================= */
 app.get("/", (req, res) => {
   res.send("HelloMart Backend is running");
 });
 
-/* ===== PRODUCTS ===== */
+/* ================= ONE-TIME ADMIN SETUP =================
+   ⚠️ Call this ONCE after deployment
+   URL:
+   https://your-backend-url/setup-admin
+*/
+app.get("/setup-admin", (req, res) => {
+  db.run(
+    `
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE,
+      password TEXT
+    )
+    `,
+    () => {
+      db.run(
+        "INSERT OR IGNORE INTO users (email, password) VALUES (?, ?)",
+        ["admin@test.com", "admin123"],
+        (err) => {
+          if (err) {
+            console.error(err);
+            return res.status(500).json({ success: false });
+          }
+          res.json({
+            success: true,
+            message: "Admin user created",
+            login: {
+              email: "admin@test.com",
+              password: "admin123"
+            }
+          });
+        }
+      );
+    }
+  );
+});
+
+/* ================= LOGIN ================= */
+app.post("/login", (req, res) => {
+  const { email, password } = req.body;
+
+  db.get(
+    "SELECT * FROM users WHERE email = ? AND password = ?",
+    [email, password],
+    (err, user) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ success: false });
+      }
+
+      if (!user) {
+        return res.status(401).json({ success: false, message: "Invalid credentials" });
+      }
+
+      res.json({ success: true });
+    }
+  );
+});
+
+/* ================= PRODUCTS ================= */
 app.get("/products", (req, res) => {
   db.all("SELECT * FROM products", [], (err, rows) => {
     if (err) {
@@ -47,9 +105,11 @@ app.post("/products", (req, res) => {
   } = req.body;
 
   db.run(
-    `INSERT INTO products
-     (itemName, price, department, barcode, tags, notes, quantity, lowStock)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `
+    INSERT INTO products
+    (itemName, price, department, barcode, tags, notes, quantity, lowStock)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
     [
       itemName,
       price,
@@ -83,9 +143,12 @@ app.put("/products/:id", (req, res) => {
   } = req.body;
 
   db.run(
-    `UPDATE products
-     SET itemName=?, price=?, department=?, barcode=?, tags=?, notes=?, quantity=?, lowStock=?
-     WHERE id=?`,
+    `
+    UPDATE products
+    SET itemName=?, price=?, department=?, barcode=?,
+        tags=?, notes=?, quantity=?, lowStock=?
+    WHERE id=?
+    `,
     [
       itemName,
       price,
@@ -107,7 +170,7 @@ app.put("/products/:id", (req, res) => {
   );
 });
 
-/* ===== DEPARTMENTS ===== */
+/* ================= DEPARTMENTS ================= */
 app.get("/departments", (req, res) => {
   db.all("SELECT * FROM departments", [], (err, rows) => {
     if (err) {
@@ -149,7 +212,7 @@ app.delete("/departments/:id", (req, res) => {
   );
 });
 
-/* ===== START SERVER ===== */
+/* ================= START SERVER ================= */
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
 });
