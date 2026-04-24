@@ -10,28 +10,32 @@ const Department = require("./models/Department");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-console.log("🚨 THIS SERVER.JS IS RUNNING 🚨");
+console.log("🚀 SERVER.JS IS RUNNING");
 
-/* ===== CONNECT DATABASE ===== */
+/* ================= CONNECT DATABASE ================= */
 connectDB();
 
-/* ===== MIDDLEWARE ===== */
+/* ================= MIDDLEWARE ================= */
 app.use(
   cors({
     origin: [
       "http://localhost:5173",
       "https://hello-mart-bkrp.vercel.app",
     ],
+    methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );
+
 app.use(express.json({ limit: "10mb" }));
 
-/* ===== HEALTH CHECK ===== */
+/* ================= HEALTH CHECK ================= */
 app.get("/", (req, res) => {
   res.send("HelloMart Backend is running (MongoDB)");
 });
 
-/* ===== ONE-TIME ADMIN SETUP ===== */
+/* ================= ONE‑TIME ADMIN SETUP =================
+   ⚠️ USE ONCE, THEN DELETE THIS ROUTE
+*/
 app.get("/setup-admin", async (req, res) => {
   try {
     await User.updateOne(
@@ -42,7 +46,10 @@ app.get("/setup-admin", async (req, res) => {
 
     res.json({
       success: true,
-      login: { email: "admin@test.com", password: "admin123" },
+      login: {
+        email: "admin@test.com",
+        password: "admin123",
+      },
     });
   } catch (err) {
     console.error("SETUP ADMIN ERROR:", err);
@@ -50,10 +57,11 @@ app.get("/setup-admin", async (req, res) => {
   }
 });
 
-/* ===== LOGIN ===== */
+/* ================= LOGIN ================= */
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+
     const user = await User.findOne({ email, password });
 
     if (!user) {
@@ -67,48 +75,87 @@ app.post("/login", async (req, res) => {
   }
 });
 
-/* ===== PRODUCTS ===== */
+/* ================= PRODUCTS ================= */
 app.get("/products", async (req, res) => {
-  const products = await Product.find();
-  res.json(products);
+  try {
+    const products = await Product.find();
+    res.json(products);
+  } catch (err) {
+    res.status(500).json([]);
+  }
 });
 
 app.post("/products", async (req, res) => {
-  await Product.create(req.body);
-  res.json({ success: true });
+  try {
+    await Product.create(req.body);
+
+    // auto-create department
+    if (req.body.department) {
+      await Department.updateOne(
+        { name: req.body.department },
+        { name: req.body.department },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("ADD PRODUCT ERROR:", err);
+    res.status(500).json({ success: false });
+  }
 });
 
 app.put("/products/:id", async (req, res) => {
-  await Product.findByIdAndUpdate(req.params.id, req.body);
-  res.json({ success: true });
+  try {
+    await Product.findByIdAndUpdate(req.params.id, req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
 
-/* ===== DEPARTMENTS ===== */
+/* ================= DEPARTMENTS ================= */
 app.get("/departments", async (req, res) => {
-  const departments = await Department.find();
-  res.json(departments);
+  try {
+    const departments = await Department.find();
+    res.json(departments);
+  } catch (err) {
+    res.status(500).json([]);
+  }
 });
 
 app.post("/departments", async (req, res) => {
-  await Department.updateOne(
-    { name: req.body.name },
-    { name: req.body.name },
-    { upsert: true }
-  );
-  res.json({ success: true });
+  try {
+    await Department.updateOne(
+      { name: req.body.name },
+      { name: req.body.name },
+      { upsert: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
 
 app.put("/departments/:id", async (req, res) => {
-  await Department.findByIdAndUpdate(req.params.id, req.body);
-  res.json({ success: true });
+  try {
+    await Department.findByIdAndUpdate(req.params.id, req.body);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
 
 app.delete("/departments/:id", async (req, res) => {
-  await Department.findByIdAndDelete(req.params.id);
-  res.json({ success: true });
+  try {
+    await Department.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
 });
 
-/* ===== IMPORT PRODUCTS ===== */
+/* ================= IMPORT PRODUCTS (FIXED & SAFE) ================= */
 app.post("/import", async (req, res) => {
   try {
     const items = req.body;
@@ -119,10 +166,23 @@ app.post("/import", async (req, res) => {
         .json({ success: false, message: "No items to import" });
     }
 
-    await Product.insertMany(items);
+    // normalize data
+    const cleanedItems = items.map(item => ({
+      itemName: item.itemName || "",
+      price: Number(item.price) || 0,
+      department: item.department || "",
+      barcode: item.barcode || "",
+      tags: item.tags || [],
+      notes: item.notes || "",
+      quantity: Number(item.quantity) || 0,
+      lowStock: Number(item.lowStock) || 0,
+    }));
 
+    await Product.insertMany(cleanedItems, { ordered: false });
+
+    // auto-create departments
     const departments = [
-      ...new Set(items.map(i => i.department).filter(Boolean)),
+      ...new Set(cleanedItems.map(i => i.department).filter(Boolean)),
     ];
 
     await Promise.all(
@@ -131,14 +191,17 @@ app.post("/import", async (req, res) => {
       )
     );
 
-    res.json({ success: true, count: items.length });
+    res.json({
+      success: true,
+      count: cleanedItems.length,
+    });
   } catch (err) {
     console.error("IMPORT ERROR:", err);
     res.status(500).json({ success: false });
   }
 });
 
-/* ===== START SERVER ===== */
+/* ================= START SERVER ================= */
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
+  console.log(`✅ Backend running on port ${PORT}`);
 });
