@@ -28,89 +28,70 @@ app.get("/", (req, res) => {
    https://your-backend-url/setup-admin
 */
 app.get("/setup-admin", (req, res) => {
-  db.run(
-    `
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE,
-      password TEXT
-    )
-    `,
-    () => {
-      db.run(
-        "INSERT OR IGNORE INTO users (email, password) VALUES (?, ?)",
-        ["admin@test.com", "admin123"],
-        (err) => {
-          if (err) {
-            console.error(err);
-            return res.status(500).json({ success: false });
-          }
-          res.json({
-            success: true,
-            message: "Admin user created",
-            login: {
-              email: "admin@test.com",
-              password: "admin123"
-            }
-          });
-        }
-      );
-    }
-  );
+  try {
+    db.prepare(
+      "INSERT OR IGNORE INTO users (email, password) VALUES (?, ?)"
+    ).run("admin@test.com", "admin123");
+
+    res.json({
+      success: true,
+      login: {
+        email: "admin@test.com",
+        password: "admin123"
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 });
 
 /* ================= LOGIN ================= */
 app.post("/login", (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  db.get(
-    "SELECT * FROM users WHERE email = ? AND password = ?",
-    [email, password],
-    (err, user) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ success: false });
-      }
+    const user = db
+      .prepare("SELECT * FROM users WHERE email = ? AND password = ?")
+      .get(email, password);
 
-      if (!user) {
-        return res.status(401).json({ success: false, message: "Invalid credentials" });
-      }
-
-      res.json({ success: true });
+    if (!user) {
+      return res.status(401).json({ success: false });
     }
-  );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 });
 
 /* ================= PRODUCTS ================= */
+
 app.get("/products", (req, res) => {
-  db.all("SELECT * FROM products", [], (err, rows) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json([]);
-    }
-    res.json(rows || []);
-  });
+  try {
+    const rows = db.prepare("SELECT * FROM products").all();
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json([]);
+  }
 });
 
-app.post("/products", (req, res) => {
-  const {
-    itemName,
-    price,
-    department,
-    barcode,
-    tags,
-    notes,
-    quantity = 0,
-    lowStock = 5
-  } = req.body;
 
-  db.run(
-    `
-    INSERT INTO products
-    (itemName, price, department, barcode, tags, notes, quantity, lowStock)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
+
+app.post("/products", (req, res) => {
+  try {
+    const {
+      itemName, price, department, barcode, tags, notes,
+      quantity = 0, lowStock = 5
+    } = req.body;
+
+    db.prepare(`
+      INSERT INTO products
+      (itemName, price, department, barcode, tags, notes, quantity, lowStock)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
       itemName,
       price,
       department,
@@ -119,16 +100,15 @@ app.post("/products", (req, res) => {
       notes,
       quantity,
       lowStock
-    ],
-    (err) => {
-      if (err) {
-        console.error("INSERT ERROR:", err);
-        return res.status(500).json({ success: false });
-      }
-      res.json({ success: true });
-    }
-  );
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 });
+
 
 app.put("/products/:id", (req, res) => {
   const {
