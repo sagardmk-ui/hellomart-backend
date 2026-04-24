@@ -24,7 +24,7 @@ app.use(
     ],
   })
 );
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 /* ===== HEALTH CHECK ===== */
 app.get("/", (req, res) => {
@@ -32,31 +32,39 @@ app.get("/", (req, res) => {
 });
 
 /* ===== ONE-TIME ADMIN SETUP ===== */
-
 app.get("/setup-admin", async (req, res) => {
-  await User.updateOne(
-    { email: "admin@test.com" },
-    { email: "admin@test.com", password: "admin123" },
-    { upsert: true }
-  );
+  try {
+    await User.updateOne(
+      { email: "admin@test.com" },
+      { email: "admin@test.com", password: "admin123" },
+      { upsert: true }
+    );
 
-  res.json({
-    success: true,
-    login: { email: "admin@test.com", password: "admin123" },
-  });
+    res.json({
+      success: true,
+      login: { email: "admin@test.com", password: "admin123" },
+    });
+  } catch (err) {
+    console.error("SETUP ADMIN ERROR:", err);
+    res.status(500).json({ success: false });
+  }
 });
-
 
 /* ===== LOGIN ===== */
 app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
+    const user = await User.findOne({ email, password });
 
-  const user = await User.findOne({ email, password });
-  if (!user) {
-    return res.status(401).json({ success: false });
+    if (!user) {
+      return res.status(401).json({ success: false });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("LOGIN ERROR:", err);
+    res.status(500).json({ success: false });
   }
-
-  res.json({ success: true });
 });
 
 /* ===== PRODUCTS ===== */
@@ -100,24 +108,23 @@ app.delete("/departments/:id", async (req, res) => {
   res.json({ success: true });
 });
 
-/* ===== START SERVER ===== */
-app.listen(PORT, () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
-});
-
 /* ===== IMPORT PRODUCTS ===== */
 app.post("/import", async (req, res) => {
   try {
     const items = req.body;
 
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ success: false, message: "No items to import" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No items to import" });
     }
 
     await Product.insertMany(items);
 
-    // auto-create departments from imported products
-    const departments = [...new Set(items.map(i => i.department).filter(Boolean))];
+    const departments = [
+      ...new Set(items.map(i => i.department).filter(Boolean)),
+    ];
+
     await Promise.all(
       departments.map(name =>
         Department.updateOne({ name }, { name }, { upsert: true })
@@ -126,7 +133,12 @@ app.post("/import", async (req, res) => {
 
     res.json({ success: true, count: items.length });
   } catch (err) {
-    console.error(err);
+    console.error("IMPORT ERROR:", err);
     res.status(500).json({ success: false });
   }
+});
+
+/* ===== START SERVER ===== */
+app.listen(PORT, () => {
+  console.log(`🚀 Backend running on port ${PORT}`);
 });
