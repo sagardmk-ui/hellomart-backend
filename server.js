@@ -10,6 +10,8 @@ const Department = require("./models/Department");
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+console.log("🚨 THIS SERVER.JS IS RUNNING 🚨");
+
 /* ===== CONNECT DATABASE ===== */
 connectDB();
 
