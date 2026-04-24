@@ -32,22 +32,20 @@ app.get("/", (req, res) => {
 });
 
 /* ===== ONE-TIME ADMIN SETUP ===== */
-app.get("/setup-admin", async (req, res) => {
-  try {
-    await User.updateOne(
-      { email: "admin@test.com" },
-      { email: "admin@test.com", password: "admin123" },
-      { upsert: true }
-    );
 
-    res.json({
-      success: true,
-      login: { email: "admin@test.com", password: "admin123" },
-    });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
+app.get("/setup-admin", async (req, res) => {
+  await User.updateOne(
+    { email: "admin@test.com" },
+    { email: "admin@test.com", password: "admin123" },
+    { upsert: true }
+  );
+
+  res.json({
+    success: true,
+    login: { email: "admin@test.com", password: "admin123" },
+  });
 });
+
 
 /* ===== LOGIN ===== */
 app.post("/login", async (req, res) => {
